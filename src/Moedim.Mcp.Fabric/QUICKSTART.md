@@ -137,6 +137,49 @@ The stdio mode is the default configuration and requires no additional setup.
    cp .vscode/mcp.http.container.json .vscode/mcp.json
    ```
 
+### Configure VS Code with dnx (packaged server)
+
+Use the published package via `dnx` instead of building locally:
+
+```json
+{
+    "servers": {
+      "Moedim.Mcp.Fabric": {
+        "type": "stdio",
+
+        "command": "dnx",
+        "args": [
+          "Moedim.Mcp.Fabric@1.0.0",
+          "--yes"
+        ],
+        "env": {
+          "Fabric__WorkspaceId": "${input:FabricWorkSpaceId}",
+          "Fabric__DefaultDatasetId": "${input:FabricDefaultDatasetId}"
+        }
+      }
+    },
+    "inputs": [
+        {
+            "id": "FabricWorkSpaceId",
+            "type": "promptString",
+            "description": "Microsoft Fabric Workspace Id"
+        },
+        {
+            "id": "FabricDefaultDatasetId",
+            "type": "promptString",
+            "description": "Microsoft Fabric Default Dataset Id"
+        }
+    ]
+}
+```
+
+Ensure your environment variables are set before launching the MCP client. You can either set them in the `env` block above or export them in your shell:
+
+```bash
+export Fabric__WorkspaceId="your-workspace-id"
+export Fabric__DefaultDatasetId="optional-default-dataset-id"
+```
+
 ## Available MCP Tools
 
 The server provides the following tools for interacting with Microsoft Fabric Semantic Models:

@@ -71,6 +71,47 @@ Or configure in your MCP client:
 }
 ```
 
+Or use the published package via `dnx` (useful when you prefer not to build locally):
+
+```json
+{
+    "servers": {
+      "Moedim.Mcp.Fabric": {
+        "type": "stdio",
+
+        "command": "dnx",
+        "args": [
+          "Moedim.Mcp.Fabric@1.0.0",
+          "--yes"
+        ],
+        "env": {
+          "Fabric__WorkspaceId": "${input:FabricWorkSpaceId}",
+          "Fabric__DefaultDatasetId": "${input:FabricDefaultDatasetId}"
+        }
+      }
+    },
+    "inputs": [
+        {
+            "id": "FabricWorkSpaceId",
+            "type": "promptString",
+            "description": "Microsoft Fabric Workspace Id"
+        },
+        {
+            "id": "FabricDefaultDatasetId",
+            "type": "promptString",
+            "description": "Microsoft Fabric Default Dataset Id"
+        }
+    ]
+}
+```
+
+Ensure the required environment variables are populated either in the `env` block above or in your shell before launching the MCP client:
+
+```bash
+export Fabric__WorkspaceId="your-workspace-id"
+export Fabric__DefaultDatasetId="optional-default-dataset-id"
+```
+
 #### HTTP Mode
 
 Use HTTP transport for stateless deployment or container environments:
