@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "fabric-semantic-model": {
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/src/Moedim.Mcp.Fabric/Moedim.Mcp.Fabric.csproj"
+      ],
+      "env": {
+        "Fabric__WorkspaceId": "your-workspace-id",
+        "Fabric__DefaultDatasetId": "optional-default-dataset-id"
+      }
+    }
+  }
+}
