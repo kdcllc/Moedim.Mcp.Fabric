@@ -1,9 +1,8 @@
-using System.Text.Json;
-using Azure.Core;
-using Azure.Identity;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moedim.Mcp.Fabric.Configuration;
 using Moedim.Mcp.Fabric.Models;
-using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace Moedim.Mcp.Fabric.Services;
 
@@ -17,26 +16,36 @@ public class FabricSemanticModelService : IFabricSemanticModelService
     private readonly string? _defaultDatasetId;
     private readonly string _apiBaseUrl;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly TokenCredential _tokenCredential;
-    private string? _cachedAccessToken;
-    private DateTime _tokenExpiryTime = DateTime.MinValue;
+    private readonly ITokenProvider _tokenProvider;
+    private readonly ILogger<FabricSemanticModelService> _logger;
 
     /// <summary>
     /// Initializes a new instance of the FabricSemanticModelService.
     /// </summary>
     /// <param name="httpClientFactory">Factory for creating HTTP clients</param>
     /// <param name="options">Fabric configuration options</param>
+    /// <param name="tokenProvider">Token provider for Fabric API authentication</param>
+    /// <param name="logger">Logger for service diagnostics</param>
     public FabricSemanticModelService(
         IHttpClientFactory httpClientFactory,
-        IOptions<FabricOptions> options)
+        IOptions<FabricOptions> options,
+        ITokenProvider tokenProvider,
+        ILogger<FabricSemanticModelService> logger)
     {
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+        _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         var fabricOptions = options.Value;
         _workspaceId = fabricOptions.WorkspaceId;
         _defaultDatasetId = fabricOptions.DefaultDatasetId;
         _apiBaseUrl = fabricOptions.ApiBaseUrl;
-        _tokenCredential = new DefaultAzureCredential();
+
+        _logger.LogDebug(
+            "FabricSemanticModelService initialized. WorkspaceId: {WorkspaceId}, DefaultDatasetId: {DefaultDatasetId}, ApiBaseUrl: {ApiBaseUrl}",
+            _workspaceId,
+            _defaultDatasetId ?? "(not set)",
+            _apiBaseUrl);
     }
 
     /// <summary>
@@ -569,31 +578,38 @@ public class FabricSemanticModelService : IFabricSemanticModelService
     {
         var client = _httpClientFactory.CreateClient("FabricAPI");
         await SetAuthorizationHeaderAsync(client, cancellationToken);
-        return await client.GetAsync(url, cancellationToken);
+
+        var response = await client.GetAsync(url, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogDebug("GET request failed. Response body: {ErrorContent}", errorContent);
+        }
+
+        return response;
     }
 
     private async Task<HttpResponseMessage> PostAsync(string url, HttpContent content, CancellationToken cancellationToken)
     {
         var client = _httpClientFactory.CreateClient("FabricAPI");
         await SetAuthorizationHeaderAsync(client, cancellationToken);
-        return await client.PostAsync(url, content, cancellationToken);
+
+        var response = await client.PostAsync(url, content, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogDebug("POST request failed. Response body: {ErrorContent}", errorContent);
+        }
+
+        return response;
     }
 
     private async Task SetAuthorizationHeaderAsync(HttpClient client, CancellationToken cancellationToken)
     {
-        if (DateTime.UtcNow < _tokenExpiryTime && !string.IsNullOrEmpty(_cachedAccessToken))
-        {
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _cachedAccessToken);
-            return;
-        }
-
-        var token = await _tokenCredential.GetTokenAsync(
-            new Azure.Core.TokenRequestContext(new[] { "https://analysis.windows.net/powerbi/api/.default" }),
-            cancellationToken);
-
-        _cachedAccessToken = token.Token;
-        _tokenExpiryTime = token.ExpiresOn.UtcDateTime;
-        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+        var token = await _tokenProvider.GetAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
     }
 
     private QueryResult ParseQueryResult(string json)

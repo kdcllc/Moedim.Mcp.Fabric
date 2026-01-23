@@ -1,13 +1,11 @@
-using System.Net;
-using System.Net.Http.Headers;
-using System.Reflection;
-using System.Text;
-using Azure.Core;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moedim.Mcp.Fabric.Configuration;
-using Moedim.Mcp.Fabric.Models;
 using Moedim.Mcp.Fabric.Services;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
 using Xunit;
 
 namespace Moedim.Mcp.Fabric.Tests;
@@ -282,9 +280,9 @@ public class FabricSemanticModelServiceTests
             HttpTimeoutSeconds = 30
         });
 
-        var service = new FabricSemanticModelService(factory, options);
-        ReplaceTokenCredential(service, new FakeTokenCredential());
-        return service;
+        var tokenProvider = new StubTokenProvider();
+        var logger = NullLogger<FabricSemanticModelService>.Instance;
+        return new FabricSemanticModelService(factory, options, tokenProvider, logger);
     }
 
     private static HttpResponseMessage CreateJsonResponse(string json, HttpStatusCode statusCode = HttpStatusCode.OK)
@@ -293,13 +291,6 @@ public class FabricSemanticModelServiceTests
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
-    }
-
-    private static void ReplaceTokenCredential(FabricSemanticModelService service, TokenCredential credential)
-    {
-        var field = typeof(FabricSemanticModelService)
-            .GetField("_tokenCredential", BindingFlags.Instance | BindingFlags.NonPublic);
-        field!.SetValue(service, credential);
     }
 
     private static string SampleQueryResultJson() =>
@@ -512,16 +503,13 @@ public class FabricSemanticModelServiceTests
         }
     }
 
-    private sealed class FakeTokenCredential : TokenCredential
+    private sealed class StubTokenProvider : ITokenProvider
     {
-        public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken)
-        {
-            return new AccessToken("token", DateTimeOffset.UtcNow.AddMinutes(10));
-        }
+        public string Token { get; set; } = "stub-token";
 
-        public override ValueTask<AccessToken> GetTokenAsync(TokenRequestContext requestContext, CancellationToken cancellationToken)
+        public Task<string> GetAccessTokenAsync(CancellationToken cancellationToken = default)
         {
-            return ValueTask.FromResult(new AccessToken("token", DateTimeOffset.UtcNow.AddMinutes(10)));
+            return Task.FromResult(Token);
         }
     }
 }

@@ -1,6 +1,8 @@
+using Azure.Monitor.OpenTelemetry.AspNetCore;
 using DotNetEnv.Configuration;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,13 +24,22 @@ if (config.UseHttp)
     var builder = WebApplication.CreateBuilder(args);
 
     // Load environment variables from .env file
-    builder.Configuration.AddDotNetEnv();
+    builder.Configuration
+        .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+        .AddDotNetEnv();
 
-    // Configure logging based on transport mode
-    builder.Logging.AddConsole();
+    if(builder.Environment.IsDevelopment())
+    {
+        builder.Configuration.AddUserSecrets<Program>();
+    }
 
-    // Register Fabric services for dependency injection
-    builder.Services.AddFabricSemanticModel(builder.Configuration);
+    builder.ConfigureAzureMonitorLogging();
+
+    // Register Fabric services for dependency injection with HTTP transport
+    builder.Services.AddFabricSemanticModel(builder.Configuration, useHttpTransport: true);
+
+    // Register JWT Bearer authentication with multi-tenant support (only if enabled)
+    builder.Services.AddJwtBearerAuthentication(builder.Configuration);
 
     // Configure MCP server with HTTP transport
     builder.Services
@@ -37,12 +48,19 @@ if (config.UseHttp)
         .WithTools<FabricSemanticModelTools>();
 
     // Configure HTTP port via environment or directly on webhost settings
+    // Use ListenAnyIP to bind to 0.0.0.0 for container accessibility
     builder.WebHost.ConfigureKestrel(options =>
     {
-        options.ListenLocalhost(config.Port);
+        options.ListenAnyIP(config.Port);
     });
 
+    // Add health checks for container liveness/readiness probes
+    builder.Services.AddHealthChecks();
+
     var webApp = builder.Build();
+
+    var logging = webApp.Services.GetRequiredService<ILogger<Program>>();
+    logging.LogInformation("Starting Fabric Semantic Model MCP Server on port {Port} with HTTP transport", config.Port);
 
     // Configure HTTPS redirection for production
     if (!config.DisableHttpsRedirect && !webApp.Environment.IsDevelopment())
@@ -53,13 +71,20 @@ if (config.UseHttp)
     // Enable routing
     webApp.UseRouting();
 
-    // Map MCP endpoint
-    webApp.MapMcp("/mcp");
+    // Enable authentication and authorization middleware (only active if JWT validation is enabled)
+    webApp.UseAuthentication();
+    webApp.UseAuthorization();
 
-    Console.WriteLine($"Fabric Semantic Model MCP Server initialized [HTTP Mode]");
-    Console.WriteLine($"Endpoint: http://localhost:{config.Port}/mcp");
-    Console.WriteLine($"HTTPS Redirection: {(!config.DisableHttpsRedirect && !webApp.Environment.IsDevelopment() ? "Enabled" : "Disabled")}");
-    Console.WriteLine("Available tools: query_semantic_model, list_semantic_models, get_semantic_model_metadata, aggregate_data, get_distinct_values");
+    // Map health check endpoint for container probes (ACA/ACI) - always allow anonymous
+    webApp.MapHealthChecks("/health").AllowAnonymous();
+
+    // Map MCP endpoint with authorization (requires valid JWT when authentication is enabled)
+    webApp.MapMcp("/mcp").RequireAuthorization();
+
+    logging.LogInformation($"Fabric Semantic Model MCP Server initialized [HTTP Mode]");
+    logging.LogInformation($"Endpoint: http://localhost:{config.Port}/mcp");
+    logging.LogInformation($"HTTPS Redirection: {(!config.DisableHttpsRedirect && !webApp.Environment.IsDevelopment() ? "Enabled" : "Disabled")}");
+    logging.LogInformation("Available tools: query_semantic_model, list_semantic_models, get_semantic_model_metadata, aggregate_data, get_distinct_values");
 
     await webApp.RunAsync();
 }
@@ -70,10 +95,12 @@ else
     // Load environment variables from .env file
     builder.Configuration.AddDotNetEnv();
 
-    // Route logs to stderr for stdio MCP protocol compliance
-    builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Information);
+    // Configure logging for stdio MCP protocol compliance
+    // Route logs to stderr at Debug level
+    builder.Logging.SetMinimumLevel(LogLevel.Debug);
+    builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Debug);
 
-    // Register Fabric services for dependency injection
+    // Register Fabric services for dependency injection with stdio transport (DefaultAzureCredential)
     builder.Services.AddFabricSemanticModel(builder.Configuration);
 
     // Configure MCP server with stdio transport

@@ -1,0 +1,58 @@
+# Moedim.Mcp.Fabric Docker Compose Configuration
+# For local development and testing
+
+services:
+  moedim-mcp-fabric:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moedim-mcp-fabric
+    ports:
+      - "5000:5000"
+    environment:
+      # Required: Microsoft Fabric workspace ID
+      - Fabric__WorkspaceId=${FABRIC_WORKSPACE_ID:-your-workspace-id-here}
+      # Optional: Default dataset ID for queries
+      - Fabric__DefaultDatasetId=${FABRIC_DEFAULT_DATASET_ID:-}
+      # Optional: Azure Monitor connection string for logging to Log Analytics
+      - AzureMonitor__ConnectionString=${AZURE_MONITOR_CONNECTION_STRING:-}
+      # Optional: Azure authentication for local development
+      # Uncomment for service principal authentication:
+      # - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      # - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      # - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # Optional: Use this service to mount Azure CLI credentials for local dev
+  # This allows DefaultAzureCredential to use your `az login` session
+  moedim-mcp-fabric-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moedim-mcp-fabric-dev
+    profiles:
+      - dev
+    ports:
+      - "5001:5000"
+    environment:
+      - Fabric__WorkspaceId=${FABRIC_WORKSPACE_ID:-your-workspace-id-here}
+      - Fabric__DefaultDatasetId=${FABRIC_DEFAULT_DATASET_ID:-}
+      # Optional: Azure Monitor connection string for logging to Log Analytics
+      - AzureMonitor__ConnectionString=${AZURE_MONITOR_CONNECTION_STRING:-}
+      # Point to mounted Azure CLI token cache
+      - AZURE_CONFIG_DIR=/home/appuser/.azure
+    volumes:
+      # Mount Azure CLI credentials (Windows path)
+      - ${USERPROFILE}/.azure:/home/appuser/.azure:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

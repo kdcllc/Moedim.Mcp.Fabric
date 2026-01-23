@@ -97,6 +97,24 @@ The server uses `DefaultAzureCredential` for authentication. Ensure you're logge
 az login
 ```
 
+### Optional: Exclude IDE Credentials
+
+To exclude Visual Studio and Visual Studio Code from the authentication chain (useful in container or CI/CD environments), set:
+
+```json
+{
+  "Fabric": {
+    "ExcludeIdeCredentials": true
+  }
+}
+```
+
+Or via environment variable:
+
+```bash
+export Fabric__ExcludeIdeCredentials="true"
+```
+
 ## VS Code MCP Client Configuration
 
 ### Configure Stdio Transport
@@ -221,4 +239,186 @@ If port 5000 is in use, specify a different port:
 
 ```bash
 dotnet run --project src/Moedim.Mcp.Fabric/Moedim.Mcp.Fabric.csproj --http --port 8080
+```
+
+## Docker Container Deployment
+
+The MCP server can be deployed as a Linux Docker container for local development or cloud deployment.
+
+### Build Docker Image
+
+Build the container image from the solution root:
+
+```bash
+docker build -t moedim-mcp-fabric:latest .
+```
+
+### Run Locally with Docker
+
+Run the container with environment variables:
+
+```bash
+docker run -d \
+  -p 5000:5000 \
+  -e Fabric__WorkspaceId="your-workspace-id" \
+  -e Fabric__DefaultDatasetId="your-dataset-id" \
+  --name moedim-mcp-fabric \
+  moedim-mcp-fabric:latest
+```
+
+### Run with Docker Compose
+
+For local development with Azure CLI credentials:
+
+```bash
+# Set environment variables
+export FABRIC_WORKSPACE_ID="your-workspace-id"
+export FABRIC_DEFAULT_DATASET_ID="your-dataset-id"
+
+# Run with docker-compose
+docker-compose up -d
+
+# Or use the dev profile to mount Azure CLI credentials
+docker-compose --profile dev up -d moedim-mcp-fabric-dev
+```
+
+### Health Check
+
+The container exposes a health endpoint at `/health`:
+
+```bash
+curl http://localhost:5000/health
+```
+
+## Azure Deployment
+
+Deploy the MCP server to Azure using system-assigned Managed Identity for Fabric API authentication.
+
+### Deploy to Azure Container Apps (Recommended)
+
+Azure Container Apps provides serverless container hosting with automatic scaling.
+
+#### Option 1: Source-to-Cloud Deployment (No Registry Setup)
+
+Deploy directly from source code - Azure creates a managed container registry automatically:
+
+```bash
+# Login to Azure
+az login
+
+# Create resource group
+az group create --name moedim-mcp-rg --location eastus
+
+# Deploy from source (builds and deploys in one command)
+az containerapp up \
+  --name moedim-mcp-fabric \
+  --resource-group moedim-mcp-rg \
+  --source . \
+  --ingress external \
+  --target-port 5000 \
+  --env-vars \
+    Fabric__WorkspaceId="your-workspace-id" \
+    Fabric__DefaultDatasetId="your-dataset-id"
+```
+
+#### Option 2: Deploy with Bicep Template
+
+Use the provided Bicep template for more control:
+
+```bash
+# Deploy infrastructure
+az deployment group create \
+  --resource-group moedim-mcp-rg \
+  --template-file infra/aca.bicep \
+  --parameters \
+    workspaceId="your-workspace-id" \
+    defaultDatasetId="your-dataset-id"
+
+# Get the MCP endpoint URL
+az deployment group show \
+  --resource-group moedim-mcp-rg \
+  --name aca \
+  --query properties.outputs.mcpEndpoint.value -o tsv
+```
+
+#### Get Managed Identity Principal ID (Optional)
+
+After deployment, get the Managed Identity principal ID for Fabric permissions:
+
+```bash
+az containerapp show \
+  --name moedim-mcp-fabric \
+  --resource-group moedim-mcp-rg \
+  --query identity.principalId -o tsv
+```
+
+Or pass OAuth 2 token when calling the MCP services to use on-behalf-of passthrough
+
+### Deploy to Azure Container Instances
+
+Azure Container Instances provides simpler container hosting with fixed resources.
+
+#### Step 1: Create Azure Container Registry
+
+```bash
+# Create ACR
+az acr create \
+  --resource-group moedim-mcp-rg \
+  --name moedimmcpacr \
+  --sku Basic
+
+# Enable admin access (for initial push)
+az acr update --name moedimmcpacr --admin-enabled true
+```
+
+#### Step 2: Build and Push Image
+
+```bash
+# Build image in ACR (no local Docker required)
+az acr build \
+  --registry moedimmcpacr \
+  --image moedim-mcp-fabric:latest \
+  .
+```
+
+#### Step 3: Deploy with Bicep Template
+
+```bash
+# Deploy container instance
+az deployment group create \
+  --resource-group moedim-mcp-rg \
+  --template-file infra/aci.bicep \
+  --parameters \
+    workspaceId="your-workspace-id" \
+    defaultDatasetId="your-dataset-id" \
+    acrName="moedimmcpacr"
+
+# Get the MCP endpoint URL
+az deployment group show \
+  --resource-group moedim-mcp-rg \
+  --name aci \
+  --query properties.outputs.mcpEndpoint.value -o tsv
+```
+
+### Configure Fabric Permissions (Option)
+
+After deployment, grant the Managed Identity access to your Fabric workspace. Use the principal ID from the deployment output.
+
+Or pass OAuth 2 token when calling the MCP services to use on-behalf-of passthrough
+
+**Note**: Fabric permission configuration is outside the scope of this quickstart. Refer to Microsoft Fabric documentation for granting workspace access to service principals.
+
+### VS Code MCP Configuration for Azure
+
+Create `.vscode/mcp.json` to connect to your deployed container:
+
+```json
+{
+  "mcpServers": {
+    "fabric": {
+      "type": "http",
+      "url": "https://your-container-app.azurecontainerapps.io/mcp"
+    }
+  }
+}
 ```

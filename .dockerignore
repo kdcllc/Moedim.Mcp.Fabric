@@ -1,0 +1,51 @@
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# Test results and coverage
+**/TestResults/
+**/coverage/
+*.coverage
+*.coveragexml
+
+# IDE and editor files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation and non-essential files
+*.md
+!README.md
+docs/
+img/
+
+# Environment files (secrets)
+.env
+.env.*
+*.local
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# REST client files
+rest/

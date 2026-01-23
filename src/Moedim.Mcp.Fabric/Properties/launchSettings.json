@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Moedim.Mcp.Fabric": {
+      "commandName": "Project",
+      "commandLineArgs": "--http --disable-https-redirect",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

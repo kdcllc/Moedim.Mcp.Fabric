@@ -33,4 +33,17 @@ public sealed class FabricOptions
     /// </summary>
     [Range(1, 300, ErrorMessage = "Fabric:HttpTimeoutSeconds must be between 1 and 300")]
     public int HttpTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Gets or sets whether to exclude Visual Studio and Visual Studio Code credentials
+    /// from the DefaultAzureCredential authentication chain.
+    /// Default: false (IDE credentials are included)
+    /// </summary>
+    public bool ExcludeIdeCredentials { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the authentication scopes used for acquiring tokens to access the Fabric REST API.
+    /// Default: []
+    /// </summary>
+    public string[] AuthenticationScopes { get; set; } = Array.Empty<string>();
 }
